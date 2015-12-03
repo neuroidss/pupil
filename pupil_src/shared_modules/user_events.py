@@ -10,7 +10,15 @@
 import os
 from pyglui import ui
 from plugin import Plugin
-from file_methods import save_object
+from file_methods import save_object, load_object
+
+import numpy as np
+from OpenGL.GL import *
+from glfw import glfwGetWindowSize,glfwGetCurrentContext
+from pyglui.cygl.utils import draw_polyline,RGBA
+from pyglui.pyfontstash import fontstash
+from pyglui.ui import get_opensans_font_path
+
 #logging
 import logging
 logger = logging.getLogger(__name__)
@@ -138,26 +146,24 @@ class User_Event_Player(Plugin):
     When captured file is played, event tags (straight line pertruding
          from bar) should appear along the video bar
     """
-    def __init__(self,g_pool,events=[('My event','e')]):
-        super(Event_Player, self).__init__(g_pool)
+    def __init__(self,g_pool):
+        super(User_Event_Player, self).__init__(g_pool)
+        from player_methods import correlate_data
+
 
         self.menu = None
-        self.frame_count = g_pool.capture.get_frame_index()
+        self.frame_count = len(self.g_pool.timestamps)
 
         #display layout
         self.padding = 20. #in sceen pixel
         self.window_size = 0,0
 
 
-    def get_index(self):
-        captured_events = load_object(os.path.join(self.g_pool.rec_dir, "user_addition_events"))
-        dict_captured_events = [{'timestamp':i[1]} for i in captured_events]
-        np_timestamps = np.load(os.path.join(self.g_pool.rec_dir, "world_timestamps.npy"))
-        timestamps = np_timestamps.tolist()
-        
-        data = correlate_data(dict_captured_events, timestamps)
+        self.events_list = load_object(os.path.join(self.g_pool.rec_dir, "user_events"))
+        correlate_data(self.events_list, self.g_pool.timestamps)
 
-        return data
+        self.event_by_timestamp = dict( [(i['timestamp'],i) for i in self.events_list])
+        self.event_by_index = dict( [(i['index'],i) for i in self.events_list])
 
 
     def init_gui(self):
@@ -166,10 +172,14 @@ class User_Event_Player(Plugin):
 
         # add menu to the window
         self.g_pool.gui.append(self.menu)
-
         self.menu.append(ui.Button('remove',self.unset_alive))
-
         self.on_window_resize(glfwGetCurrentContext(),*glfwGetWindowSize(glfwGetCurrentContext()))
+
+        self.glfont = fontstash.Context()
+        self.glfont.add_font('opensans',get_opensans_font_path())
+        self.glfont.set_size(24)
+        #self.glfont.set_color_float((0.2,0.5,0.9,1.0))
+        self.glfont.set_align_string(v_align='center',h_align='middle')
 
 
     def on_window_resize(self,window,w,h):
@@ -179,8 +189,9 @@ class User_Event_Player(Plugin):
 
 
     def update(self,frame,events):
-        pass
-
+        event = self.event_by_index.get(frame.index,None)
+        if event:
+            logger.info(event['user_event_name'])
 
     def deinit_gui(self):
         if self.menu:
@@ -203,13 +214,16 @@ class User_Event_Player(Plugin):
         glLoadIdentity()
 
         event_tick_color = (1.,0.,0.,.8)
-        events_in_frame = self.get_index()
 
-        for frame in events_in_frame:
-            logger.info(frame)
-            if len(frame) != 0:
-                draw_polyline(verts=[(frame[0]['index'],0),(frame[0]['index'],20)],
+
+        for e in self.events_list:
+            logger.info(str(e['index']))
+            
+            draw_polyline(verts=[(e['index'],0),(e['index'],.02)],
                     color=RGBA(*event_tick_color))
+            self.glfont.set_color_float((1.,0.,0.,.8))
+            #self.glfont.set_blur(0.96)
+            self.glfont.draw_text(e['index'],0.02,e['user_event_name'])
 
 
         # draw_polyline(verts=[(0,0),(self.current_frame_index,0)],color=RGBA(*color1))
@@ -221,6 +235,9 @@ class User_Event_Player(Plugin):
         glPopMatrix()
         glMatrixMode(GL_MODELVIEW)
         glPopMatrix()
+
+    def get_init_dict(self):
+        return {}
 
 
     def cleanup(self):
