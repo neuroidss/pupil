@@ -510,7 +510,7 @@ if __name__ == '__main__':
         rec_dir = os.path.expanduser(sys.argv[1])
     except:
         #for dev, supply hardcoded dir:
-        rec_dir = '/Users/mkassner/Desktop/Marker_Tracking_Demo_Recording'
+        rec_dir = '/Users/sarah/pupil/recordings/2015_09_25/001'
         if os.path.isdir(rec_dir):
             logger.debug("Dev option: Using hardcoded data dir.")
         else:
