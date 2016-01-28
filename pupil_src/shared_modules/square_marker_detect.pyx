@@ -7,12 +7,14 @@
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
-
+cimport cython
+# cython: profile=True
 import cv2
 import numpy as np
 from scipy.spatial.distance import pdist
 #because np.sqrt is slower when we do it on small arrays
 from math import sqrt
+
 
 def get_close_markers(markers,centroids=None, min_distance=20):
     if centroids is None:
@@ -31,9 +33,9 @@ def get_close_markers(markers,centroids=None, min_distance=20):
     close_pairs = np.where(distances<min_distance)
     return full_idx(close_pairs)
 
+@cython.profile(True)
+cdef decode(square_img,grid):
 
-
-def decode(square_img,grid):
     step = square_img.shape[0]/grid
     start = step/2
     #look only at the center point of each grid cell
@@ -116,8 +118,7 @@ def correct_gradient(gray_img,r):
     except:
         #px outside of img frame, let the other method check
         return True
-
-
+@cython.profile(True)
 def detect_markers(gray_img,grid_size,min_marker_perimeter=40,aperture=11,visualize=False):
     edges = cv2.adaptiveThreshold(gray_img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, aperture, 9)
 
@@ -242,7 +243,7 @@ lk_params = dict( winSize  = (45, 45),
                   criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
 prev_img = None
 tick = 0
-
+@cython.profile(True)
 def detect_markers_robust(gray_img,grid_size,prev_markers,min_marker_perimeter=40,aperture=11,visualize=False,true_detect_every_frame = 1):
     global prev_img
 
@@ -296,27 +297,3 @@ def detect_markers_robust(gray_img,grid_size,prev_markers,min_marker_perimeter=4
 
     prev_img = gray_img.copy()
     return markers
-
-
-
-def bench():
-    cap = cv2.VideoCapture('/Users/patrickfuerst/Documents/Projects/Pupil-Laps/worldvideos/marker.mp4')
-    status,img = cap.read()
-    markers = []
-    while status:
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        markers = detect_markers_robust(img,5,markers,true_detect_every_frame=1)
-        status,img = cap.read()
-        # if markers:
-        #     print  'asda'
-        #     return
-
-
-
-if __name__ == '__main__':
-    import cProfile,subprocess,os
-    cProfile.runctx("bench()",{},locals(),"world.pstats")
-    loc = os.path.abspath(__file__).rsplit('pupil_src', 1)
-    gprof2dot_loc = os.path.join(loc[0], 'pupil_src', 'shared_modules','gprof2dot.py')
-    subprocess.call("python "+gprof2dot_loc+" -f pstats world.pstats | dot -Tpng -o world_cpu_time.png", shell=True)
-    print "created  time graph for  process. Please check out the png next to this file"
