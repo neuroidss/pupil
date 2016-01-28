@@ -300,14 +300,16 @@ def detect_markers_robust(gray_img,grid_size,prev_markers,min_marker_perimeter=4
 
 
 def bench():
-    cap = cv2.VideoCapture('/Users/mkassner/Pupil/datasets/markers/many.mov')
+    cap = cv2.VideoCapture('/Users/patrickfuerst/Documents/Projects/Pupil-Laps/worldvideos/marker.mp4')
     status,img = cap.read()
     markers = []
     while status:
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         markers = detect_markers_robust(img,5,markers,true_detect_every_frame=1)
         status,img = cap.read()
-        if markers:
-            return
+        # if markers:
+        #     print  'asda'
+        #     return
 
 
 
