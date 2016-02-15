@@ -6,7 +6,7 @@ import calibrate
 from file_methods import load_object,save_object
 from camera_intrinsics_estimation import load_camera_calibration
 
-from optimization_calibration import point_line_calibration , line_line_calibration
+from optimization_calibration import point_line_calibration , line_line_calibration, line_line_calibration_binocular
 
 #logging
 import logging
@@ -312,10 +312,11 @@ def finish_calibration_rays(g_pool,pupil_list,ref_list):
             initial_translation0 = (25, 15, -10)
             initial_translation1 = (-5, 15, -10)
 
-            success0, orientation0, translation0  = line_line_calibration(sphere_pos0, ref_3d,  gaze_direction0_3d, initial_orientation0, initial_translation0, fix_translation = True)
-            success1, orientation1, translation1  = line_line_calibration(sphere_pos1, ref_3d,  gaze_direction1_3d, initial_orientation1, initial_translation1, fix_translation = True)
+            success, orientation0, translation0, orientation1, translation1 = line_line_calibration_binocular(sphere_pos0, sphere_pos1, ref_3d,
+                    gaze_direction0_3d, gaze_direction1_3d,
+                    initial_orientation0, initial_translation0, initial_orientation1, initial_translation1, fix_translation = True)
 
-            if not success0 or not success1:
+            if not success :
                 logger.error("Calibration solver faild to converge.")
                 g_pool.active_calibration_plugin.notify_all({'subject':'calibration_failed','reason':"Calibration solver faild to converge.",'timestamp':g_pool.capture.get_timestamp(),'record':True})
                 return
@@ -410,7 +411,7 @@ def finish_calibration_rays(g_pool,pupil_list,ref_list):
             initial_translation = (25, 30,-20)
 
             success, orientation, translation  = line_line_calibration(sphere_pos, ref_3d,  gaze_direction_3d, initial_orientation, initial_translation, fix_translation = True)
-
+            print 'translation: ', translation
             if not success:
                 logger.error("Calibration solver faild to converge.")
                 g_pool.active_calibration_plugin.notify_all({'subject':'calibration_failed','reason':"Calibration solver faild to converge.",'timestamp':g_pool.capture.get_timestamp(),'record':True})

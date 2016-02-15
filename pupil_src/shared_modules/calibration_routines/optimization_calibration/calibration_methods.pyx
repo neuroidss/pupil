@@ -114,7 +114,7 @@ def line_line_calibration_binocular( sphere_position0, sphere_position1, ref_dir
 
     ## optimized values are written to cpp_orientation0 and cpp_translation
     cdef bint success  = lineLineCalibrationBinocular(cpp_sphere_position0,cpp_sphere_position1, cpp_ref_directions, cpp_gaze_directions0, cpp_gaze_directions1,
-                                             &cpp_orientation0[0], &cpp_translation0[0],  &cpp_orientation1[0], &cpp_translation0[0],
+                                             &cpp_orientation0[0], &cpp_translation0[0],  &cpp_orientation1[0], &cpp_translation1[0],
                                              fix_translation, cpp_translation_lower_bound, cpp_translation_upper_bound )
 
 

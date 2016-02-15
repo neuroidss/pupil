@@ -332,7 +332,7 @@ bool lineLineCalibration(Vector3 spherePosition, const std::vector<Vector3>& ref
 }
 
 bool lineLineCalibrationBinocular( Vector3 spherePosition0, Vector3 spherePosition1, const std::vector<Vector3>& refDirections, const std::vector<Vector3>& gazeDirections0 ,const std::vector<Vector3>& gazeDirections1,
-    double* orientation0 ,double* orientation1 , double* translation0, double* translation1, bool fixTranslation = false ,
+    double* orientation0 ,double* translation0, double* orientation1,  double* translation1, bool fixTranslation = false ,
     Vector3 translationLowerBound = {15,5,5},Vector3 translationUpperBound = {15,5,5}
     )
 {
