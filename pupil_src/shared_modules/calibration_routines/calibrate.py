@@ -262,7 +262,8 @@ def closest_matches_binocular(ref_pts, pupil_pts,max_dispersion=1/15.):
             if dispersion < max_dispersion:
                 matched.append({'ref':r,'pupil0':closest_p0, 'pupil1':closest_p1})
             else:
-                print "to far."
+                pass
+                #print "to far."
     return matched
 
 
