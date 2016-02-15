@@ -4,6 +4,8 @@
 #include <iostream>
 #include <boost/range.hpp>
 #include <Eigen/Core>
+#include "geometry/Sphere.h"
+#include "math/mathHelper.h"
 
 namespace singleeyefitter {
 
