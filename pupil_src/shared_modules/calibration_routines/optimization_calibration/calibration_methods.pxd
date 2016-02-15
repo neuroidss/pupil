@@ -46,3 +46,10 @@ cdef extern from 'lineLineCalibration.h':
     bint lineLineCalibration( Vector3 spherePosition,const vector[Vector3]& refDirections,const vector[Vector3]& gazeDirections,  double[4]& orientation ,
                                  double[3]& translation, bint fixTranslation,
                                  Vector3 translationLowerBound, Vector3 translationUpperBound  )
+
+cdef extern from 'lineLineCalibration.h':
+
+    bint lineLineCalibrationBinocular( Vector3 spherePosition0, Vector3 spherePosition1,const vector[Vector3]& refDirections,const vector[Vector3]& gazeDirections0,
+                                const vector[Vector3]& gazeDirections1, double[4]& orientation0, double[3]& translation0,
+                                double[4]& orientation1, double[3]& translation1, bint fixTranslation,
+                                 Vector3 translationLowerBound, Vector3 translationUpperBound  )

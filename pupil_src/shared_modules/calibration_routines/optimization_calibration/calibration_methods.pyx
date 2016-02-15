@@ -76,3 +76,46 @@ def line_line_calibration( sphere_position, ref_directions_3D, gaze_directions_3
 
 
     return success, cpp_orientation, cpp_translation
+
+def line_line_calibration_binocular( sphere_position0, sphere_position1, ref_directions_3D, gaze_directions_3D0,gaze_directions_3D1,
+    initial_orientation0 , initial_translation0, initial_orientation1 , initial_translation1,
+    fix_translation = False, translation_lower_bound = (15,5,5) ,  translation_upper_bound = (15,5,5) ):
+
+
+    cdef vector[Vector3] cpp_ref_directions
+    cdef vector[Vector3] cpp_gaze_directions0
+    cdef vector[Vector3] cpp_gaze_directions1
+
+    for p in ref_directions_3D:
+        cpp_ref_directions.push_back(Vector3(p[0],p[1],p[2]))
+
+    for p in gaze_directions_3D0:
+        cpp_gaze_directions0.push_back(Vector3(p[0],p[1],p[2]))
+
+    for p in gaze_directions_3D1:
+        cpp_gaze_directions1.push_back(Vector3(p[0],p[1],p[2]))
+
+    cdef Vector3 cpp_sphere_position0
+    cdef Vector3 cpp_sphere_position1
+    cpp_sphere_position0 = Vector3(sphere_position0[0],sphere_position0[1],sphere_position0[2])
+    cpp_sphere_position1 = Vector3(sphere_position1[0],sphere_position1[1],sphere_position1[2])
+
+    cdef double cpp_orientation0[4] #quaternion
+    cdef double cpp_translation0[3]
+    cdef double cpp_orientation1[4] #quaternion
+    cdef double cpp_translation1[3]
+    cpp_orientation0[:] = initial_orientation0
+    cpp_translation0[:] = initial_translation0
+    cpp_orientation1[:] = initial_orientation1
+    cpp_translation1[:] = initial_translation1
+
+    cdef Vector3 cpp_translation_upper_bound = Vector3(translation_upper_bound[0],translation_upper_bound[1],translation_upper_bound[2])
+    cdef Vector3 cpp_translation_lower_bound = Vector3(translation_lower_bound[0],translation_lower_bound[1],translation_lower_bound[2])
+
+    ## optimized values are written to cpp_orientation0 and cpp_translation
+    cdef bint success  = lineLineCalibrationBinocular(cpp_sphere_position0,cpp_sphere_position1, cpp_ref_directions, cpp_gaze_directions0, cpp_gaze_directions1,
+                                             &cpp_orientation0[0], &cpp_translation0[0],  &cpp_orientation1[0], &cpp_translation0[0],
+                                             fix_translation, cpp_translation_lower_bound, cpp_translation_upper_bound )
+
+
+    return success, cpp_orientation0, cpp_translation0,cpp_orientation1, cpp_translation1
