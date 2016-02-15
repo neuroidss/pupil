@@ -23,6 +23,7 @@ struct Result{
     Scalar distanceSquared;
     Scalar rayLength0;
     Scalar rayLength1;
+    Eigen::Matrix<Scalar, 3, 1> closestPoint;
     bool valid = false;
 };
 
@@ -30,7 +31,7 @@ struct Result{
 // ceres get's to know if the rays don't lie in the same direction with angle less than 90 degree
 // Book: Geometric Tools for Computer Graphics, Side 413
 template<typename Scalar, int Dim>
-Result<Scalar> ceresRayRayDistanceSquared(const Eigen::ParametrizedLine<Scalar, Dim>& ray0, const Eigen::ParametrizedLine<Scalar, Dim>& ray1 )
+Result<Scalar> ceresRayRayDistance(const Eigen::ParametrizedLine<Scalar, Dim>& ray0, const Eigen::ParametrizedLine<Scalar, Dim>& ray1 )
 {
 
     typedef typename Eigen::ParametrizedLine<Scalar, Dim>::VectorType Vector;
@@ -64,6 +65,7 @@ Result<Scalar> ceresRayRayDistanceSquared(const Eigen::ParametrizedLine<Scalar, 
                 Vector closestPoint1 = ray1.origin() + s1 * ray1.direction();
                 diff = closestPoint0 - closestPoint1;
 
+                result.closestPoint =  closestPoint1 + Scalar(0.5) * diff;
                 result.distanceSquared =  diff.dot(diff);
                 result.rayLength0 = s0;
                 result.rayLength1 = s1;
@@ -134,7 +136,7 @@ struct TransformationRayRayError {
         Eigen::ParametrizedLine<T, 3> gazeLine = {t , gazeTransformed};
         Eigen::ParametrizedLine<T, 3> refLine = {origin, refP };
 
-        Result<T> result = ceresRayRayDistanceSquared(gazeLine , refLine);
+        Result<T> result = ceresRayRayDistance(gazeLine , refLine);
 
         if(  result.valid ){
             residuals[0] = result.distanceSquared / (result.rayLength0 * result.rayLength1);
@@ -183,17 +185,14 @@ struct TransformationBinocularRayRayError {
         Line gazeLine1 = {t1 , gazeTransformed1};
         Line refLine = {origin, refP };
 
-        std::vector<Line> lines = {refLine, gazeLine0 ,gazeLine1};
+        //std::vector<Line> lines = {refLine, gazeLine0 ,gazeLine1};
 
-        Vector intersectionPoint = singleeyefitter::nearest_intersect(lines);
+        Result<T> resultGaze = ceresRayRayDistance(gazeLine0, gazeLine1);
+        ResultPointRay<T> resultRef = ceresRayPointDistanceSquared(refLine , resultGaze.closestPoint);
 
-
-        ResultPointRay<T> result0 = ceresRayPointDistanceSquared(gazeLine0 , intersectionPoint);
-        ResultPointRay<T> result1 = ceresRayPointDistanceSquared(gazeLine1 , intersectionPoint);
-
-        if(  result0.valid && result1.valid ){
-            residuals[0] = result0.distanceSquared;
-            residuals[1] = result1.distanceSquared;
+        if(  resultGaze.valid  ){
+            residuals[0] = resultGaze.distanceSquared / (resultGaze.rayLength0 * resultGaze.rayLength1);
+            residuals[1] = resultRef.distanceSquared;
             return true;
         }
         return false;
@@ -366,6 +365,7 @@ bool lineLineCalibrationBinocular( Vector3 spherePosition0, Vector3 spherePositi
         valid |= ref.norm() >= epsilon;
         valid |= (q0*gaze0).dot(ref) >= epsilon;
         valid |= (q1*gaze1).dot(ref) >= epsilon;
+        valid |= (q1*gaze1).dot(q0*gaze0) >= epsilon;
 
         if( valid ){
             CostFunction* cost = new AutoDiffCostFunction<TransformationBinocularRayRayError , 2, 4, 3, 4, 3 >(new TransformationBinocularRayRayError(ref, gaze0 , gaze1 ));
