@@ -44,9 +44,9 @@ extensions = [
      Extension(
         name="calibration_methods",
         sources=['calibration_methods.pyx'],
-        include_dirs = [ np.get_include() , '/usr/local/include/eigen3','/usr/include/eigen3'],
+        include_dirs = [ np.get_include() , '/usr/local/include/eigen3','/usr/include/eigen3' , '/usr/local/opt/opencv3/include'],
         libraries = [ 'ceres' ],
-        # library_dirs = ['/usr/local/lib'],
+        library_dirs = ['/usr/local/opt/opencv3/lib'],
         extra_link_args=[], #'-WL,-R/usr/local/lib'
         extra_compile_args=["-std=c++11",'-w','-O2'], #-w hides warnings
         depends= dependencies,
