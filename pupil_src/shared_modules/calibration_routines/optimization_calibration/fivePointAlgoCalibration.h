@@ -31,6 +31,8 @@ Result<Scalar> rayRayDistanceSquared(const Eigen::ParametrizedLine<Scalar, Dim>&
 
     Result<Scalar> result;
     result.valid = false;
+    result.rayLength0 = -1;
+    result.rayLength1 = -1;
 
     Vector diff = ray0.origin() - ray1.origin();
     Scalar a01 = - ray0.direction().dot(ray1.direction());
@@ -75,30 +77,35 @@ Result<Scalar> rayRayDistanceSquared(const Eigen::ParametrizedLine<Scalar, Dim>&
 bool checkTransformationIsValid( const Eigen::Quaterniond& orientation,const Eigen::Vector3d& translation,
                                  const std::vector<cv::Point3d>& refDirections, const std::vector<cv::Point3d>& gazeDirections){
     std::cout << "check"  << std::endl;
-    bool valid = true;
+    bool valid = false;
     Eigen::Matrix<double, 3, 1> origin = {0,0,0};
+    int correctResults = 0;
     for(int i=0; i < refDirections.size(); i ++){
 
-        auto refD = singleeyefitter::toEigen(refDirections.at(i));
-        auto gazeD = singleeyefitter::toEigen(gazeDirections.at(i));
+        const auto& refD = singleeyefitter::toEigen(refDirections.at(i));
+        const auto& gazeD = singleeyefitter::toEigen(gazeDirections.at(i));
 
-        refD.normalize(); //to be sure
-        gazeD.normalize();
         auto gazeDTransformed = orientation * gazeD;
         //std::cout << "gazeDTransformed: " << gazeDTransformed << std::endl;
 
         Eigen::ParametrizedLine<double, 3> refLine = {origin, refD };
         Eigen::ParametrizedLine<double, 3> gazeLine = {translation , gazeDTransformed};
-        valid &=  gazeDTransformed.z() > 0.0  ? true : false;
-        std::cout << "gazeDTransformed: " << gazeDTransformed << std::endl;
+        //valid &=  gazeDTransformed.z() > 0.0  ? true : false;
+        //std::cout << "gazeDTransformed: " << gazeDTransformed << std::endl;
 
-        auto result = rayRayDistanceSquared(refLine , gazeLine);
-        std::cout << "result: " << std::boolalpha << result.valid << std::endl;
-        std::cout << "results0: " << result.rayLength0 << std::endl;
-        std::cout << "results1: " << result.rayLength1 << std::endl;
-        valid &= result.valid;
-        valid &= result.rayLength0 > 0.0 && result.rayLength1 > 0.0 ? true : false;
+         auto result = rayRayDistanceSquared(refLine , gazeLine);
+        // std::cout << "result: " << std::boolalpha << result.valid << std::endl;
+        // std::cout << "results0: " << result.rayLength0 << std::endl;
+        // std::cout << "results1: " << result.rayLength1 << std::endl;
+        if( result.valid && result.rayLength0 > 0.0 && result.rayLength1 > 0.0 ){
+            correctResults++;
+        }
     }
+
+    if( correctResults >= refDirections.size() * 0.7){
+        valid = true;
+    }
+    std::cout << "correct results" << correctResults  << std::endl;
     std::cout << "this is valid: " << std::boolalpha << valid << std::endl;
     return valid;
 
@@ -114,11 +121,34 @@ bool fivePointAlgoCalibration(Vector3 spherePosition, const std::vector<cv::Poin
     if( refDirections.size() < 5 || gazeDirections.size() < 5 )
         return false;
 
-    cv::Mat refH , gazeH;
-    cv::convertPointsFromHomogeneous(refDirections , refH);
-    cv::convertPointsFromHomogeneous(gazeDirections , gazeH);
+    std::vector<cv::Point2d> refH , gazeH;
+    Eigen::Vector3d zAxis = {0,0,1};
 
-    auto essentialMatrix = cv::findEssentialMat( refH, gazeH );
+    for(int i= 0; i< refDirections.size(); i++){
+
+        auto refD = singleeyefitter::toEigen(refDirections.at(i));
+        auto gazeD = singleeyefitter::toEigen(gazeDirections.at(i));
+        refD.normalize(); //to be sure
+        gazeD.normalize();
+
+        // extend them to the image plane at distance 1.
+        double angleCos = refD.dot(zAxis);
+        refD = refD * 1.0/angleCos;
+        refH.emplace_back( refD.x() , refD.y() );
+
+
+        angleCos = gazeD.dot(-zAxis);
+        gazeD = gazeD * 1.0/angleCos;
+        gazeH.emplace_back( gazeD.x() , gazeD.y() );
+
+
+    }
+
+    cv::Mat mask;
+    auto essentialMatrix = cv::findEssentialMat( refH, gazeH , 1.0, cv::Point2d(0, 0), cv::RANSAC, 0.999, 0.01, mask  );
+
+    std::cout << "mask: " << mask  << std::endl;
+
 
     cv::Mat r1, r2, t;
     cv::decomposeEssentialMat( essentialMatrix , r1 , r2, t );
