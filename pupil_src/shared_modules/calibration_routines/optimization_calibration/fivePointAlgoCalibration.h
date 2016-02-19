@@ -10,12 +10,21 @@
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/eigen.hpp>
 #include "utils.h"
+#include "math/Intersect.h"
+
+// template<typename Scalar>
+// struct Result{
+//     Scalar distanceSquared;
+//     Scalar rayLength0;
+//     Scalar rayLength1;
+//     bool valid = false;
+// };
 
 // since for rayray distance both parameters s,t for eq r0=p0+s*d0 and r1=p1+t*d1 need to be positive
 // ceres get's to know if the rays don't lie in the same direction with angle less than 90 degree
 // Book: Geometric Tools for Computer Graphics, Side 413
 template<typename Scalar, int Dim>
-bool rayRayIntersectionInFront(const Eigen::ParametrizedLine<Scalar, Dim>& ray0, const Eigen::ParametrizedLine<Scalar, Dim>& ray1 )
+Result<Scalar> rayRayDistanceSquared(const Eigen::ParametrizedLine<Scalar, Dim>& ray0, const Eigen::ParametrizedLine<Scalar, Dim>& ray1 )
 {
 
     typedef typename Eigen::ParametrizedLine<Scalar, Dim>::VectorType Vector;
@@ -35,18 +44,33 @@ bool rayRayIntersectionInFront(const Eigen::ParametrizedLine<Scalar, Dim>& ray0,
         b1 = -diff.dot(ray1.direction());
         s0 = a01 * b1 - b0;
         s1 = a01 * b0 - b1;
+
         if (s0 >= Scalar(0) )
         {
             if (s1 >= Scalar(0) )
             {
-                return true;
+                // Minimum at two  points of rays.
+                Scalar det = Scalar(1) - a01 * a01;
+                s0 /= det;
+                s1 /= det;
+
+                Vector closestPoint0 = ray0.origin() + s0 * ray0.direction();
+                Vector closestPoint1 = ray1.origin() + s1 * ray1.direction();
+                diff = closestPoint0 - closestPoint1;
+
+                result.distanceSquared =  diff.dot(diff);
+                result.rayLength0 = s0;
+                result.rayLength1 = s1;
+                result.valid = true;
+                return result;
             }
         }
     }
     // everything else is not valid
-    return false;
+    return result;
 
 }
+
 
 bool checkTransformationIsValid( const Eigen::Quaterniond& orientation,const Eigen::Vector3d& translation,
                                  const std::vector<cv::Point3d>& refDirections, const std::vector<cv::Point3d>& gazeDirections){
@@ -66,7 +90,14 @@ bool checkTransformationIsValid( const Eigen::Quaterniond& orientation,const Eig
         Eigen::ParametrizedLine<double, 3> refLine = {origin, refD };
         Eigen::ParametrizedLine<double, 3> gazeLine = {translation , gazeDTransformed};
         valid &=  gazeDTransformed.z() > 0.0  ? true : false;
-        //valid &= rayRayIntersectionInFront(refLine , gazeLine);
+        std::cout << "gazeDTransformed: " << gazeDTransformed << std::endl;
+
+        auto result = rayRayDistanceSquared(refLine , gazeLine);
+        std::cout << "result: " << std::boolalpha << result.valid << std::endl;
+        std::cout << "results0: " << result.rayLength0 << std::endl;
+        std::cout << "results1: " << result.rayLength1 << std::endl;
+        valid &= result.valid;
+        valid &= result.rayLength0 > 0.0 && result.rayLength1 > 0.0 ? true : false;
     }
     std::cout << "this is valid: " << std::boolalpha << valid << std::endl;
     return valid;
@@ -111,7 +142,7 @@ bool fivePointAlgoCalibration(Vector3 spherePosition, const std::vector<cv::Poin
     cv::cv2eigen(t,translation);
 
 
-    double translation_length = 1.0;
+    double translation_length = 30.0;
     translation  *= translation_length;
 
     bool valid = false;
@@ -145,9 +176,7 @@ bool fivePointAlgoCalibration(Vector3 spherePosition, const std::vector<cv::Poin
     orientationFound[2] = validOrientation.y();
     orientationFound[3] = validOrientation.z();
 
-    // translation[0] = t.at<double>(0);
-    // translation[1] = t.at<double>(1);
-    // translation[2] = t.at<double>(2);
+
 
     //Ceres Matrices are RowMajor, where as Eigen is default ColumnMajor
     // Eigen::Matrix<double, 3, 3, Eigen::RowMajor> rotation;
@@ -161,24 +190,24 @@ bool fivePointAlgoCalibration(Vector3 spherePosition, const std::vector<cv::Poin
     // // }
 
 
-    // // we need to take the sphere position into account
-    // // thus the actual translation is not right, because the local coordinate frame of the eye need to be translated in the opposite direction
-    // // of the sphere coordinates
+    // we need to take the sphere position into account
+    // thus the actual translation is not right, because the local coordinate frame of the eye need to be translated in the opposite direction
+    // of the sphere coordinates
 
     // // since the actual translation is in world coordinates, the sphere translation needs to be calculated in world coordinates
-    // Eigen::Matrix4d eyeToWorld =  Eigen::Matrix4d::Identity();
-    // eyeToWorld.block<3,3>(0,0) = Eigen::Map<Eigen::Matrix<double,3,3,Eigen::RowMajor> >(rotation.data());
-    // eyeToWorld(0, 3) = translation[0];
-    // eyeToWorld(1, 3) = translation[1];
-    // eyeToWorld(2, 3) = translation[2];
+    Eigen::Matrix4d eyeToWorld =  Eigen::Matrix4d::Identity();
+    eyeToWorld.block<3,3>(0,0) = validOrientation.toRotationMatrix();
+    eyeToWorld(0, 3) = validTranslation[0];
+    eyeToWorld(1, 3) = validTranslation[1];
+    eyeToWorld(2, 3) = validTranslation[2];
 
-    // Eigen::Vector4d sphereWorld = eyeToWorld * Eigen::Vector4d(spherePosition[0],spherePosition[1],spherePosition[2], 1.0 );
-    // Vector3 sphereOffset =  sphereWorld.head<3>() - Vector3(translation);
-    // Vector3 actualtranslation =  Vector3(translation) - sphereOffset;
-    // // write the actual one back
-    // translation[0] = actualtranslation[0];
-    // translation[1] = actualtranslation[1];
-    // translation[2] = actualtranslation[2];
+    Eigen::Vector4d sphereWorld = eyeToWorld * Eigen::Vector4d(spherePosition[0],spherePosition[1],spherePosition[2], 1.0 );
+    Vector3 sphereOffset =  sphereWorld.head<3>() - Vector3(validTranslation);
+    Vector3 actualtranslation =  Vector3(validTranslation) - sphereOffset;
+    // write the actual one back
+    translationFound[0] = actualtranslation[0];
+    translationFound[1] = actualtranslation[1];
+    translationFound[2] = actualtranslation[2];
     return true;
 
 }
