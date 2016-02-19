@@ -34,6 +34,16 @@ cdef extern from 'common.h':
     ctypedef Matrix21d Vector2
 
 
+cdef extern from '<opencv2/core.hpp>' namespace 'cv':
+
+  cdef cppclass Point3_[T]:
+    Point3_() except +
+    Point3_(T _x, T _y, T _z) except +
+
+  ctypedef Point3_[double] Point3d;
+
+
+
 cdef extern from 'pointLineCalibration.h':
 
 
@@ -44,5 +54,11 @@ cdef extern from 'pointLineCalibration.h':
 cdef extern from 'lineLineCalibration.h':
 
     bint lineLineCalibration( Vector3 spherePosition,const vector[Vector3]& refDirections,const vector[Vector3]& gazeDirections,  double[4]& orientation ,
+                                 double[3]& translation, bint fixTranslation,
+                                 Vector3 translationLowerBound, Vector3 translationUpperBound  )
+
+cdef extern from 'fivePointAlgoCalibration.h':
+
+    bint fivePointAlgoCalibration( Vector3 spherePosition,const vector[Point3d]& refDirections,const vector[Point3d]& gazeDirections,  double[4]& orientation ,
                                  double[3]& translation, bint fixTranslation,
                                  Vector3 translationLowerBound, Vector3 translationUpperBound  )

@@ -33,6 +33,8 @@ import numpy as np
 import os, platform
 
 
+singleeyefitter_include_path = '../../../capture/pupil_detectors/singleeyefitter/'
+shared_cpp_include_path = '../../../shared_cpp/include/'
 
 dependencies = []
 # include all header files, to recognize changes
@@ -44,7 +46,7 @@ extensions = [
      Extension(
         name="calibration_methods",
         sources=['calibration_methods.pyx'],
-        include_dirs = [ np.get_include() , '/usr/local/include/eigen3','/usr/include/eigen3' , '/usr/local/opt/opencv3/include'],
+        include_dirs = [ np.get_include() , '/usr/local/include/eigen3','/usr/include/eigen3' , '/usr/local/opt/opencv3/include' , singleeyefitter_include_path, shared_cpp_include_path ],
         libraries = [ 'ceres' ],
         library_dirs = ['/usr/local/opt/opencv3/lib'],
         extra_link_args=[], #'-WL,-R/usr/local/lib'
