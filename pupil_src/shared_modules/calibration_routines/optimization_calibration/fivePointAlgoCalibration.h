@@ -35,7 +35,6 @@ bool rayRayIntersectionInFront(const Eigen::ParametrizedLine<Scalar, Dim>& ray0,
         b1 = -diff.dot(ray1.direction());
         s0 = a01 * b1 - b0;
         s1 = a01 * b0 - b1;
-
         if (s0 >= Scalar(0) )
         {
             if (s1 >= Scalar(0) )
@@ -49,9 +48,34 @@ bool rayRayIntersectionInFront(const Eigen::ParametrizedLine<Scalar, Dim>& ray0,
 
 }
 
+bool checkTransformationIsValid( const Eigen::Quaterniond& orientation,const Eigen::Vector3d& translation,
+                                 const std::vector<cv::Point3d>& refDirections, const std::vector<cv::Point3d>& gazeDirections){
+    std::cout << "check"  << std::endl;
+    bool valid = true;
+    Eigen::Matrix<double, 3, 1> origin = {0,0,0};
+    for(int i=0; i < refDirections.size(); i ++){
+
+        auto refD = singleeyefitter::toEigen(refDirections.at(i));
+        auto gazeD = singleeyefitter::toEigen(gazeDirections.at(i));
+
+        refD.normalize(); //to be sure
+        gazeD.normalize();
+        auto gazeDTransformed = orientation * gazeD;
+        //std::cout << "gazeDTransformed: " << gazeDTransformed << std::endl;
+
+        Eigen::ParametrizedLine<double, 3> refLine = {origin, refD };
+        Eigen::ParametrizedLine<double, 3> gazeLine = {translation , gazeDTransformed};
+        valid &=  gazeDTransformed.z() > 0.0  ? true : false;
+        //valid &= rayRayIntersectionInFront(refLine , gazeLine);
+    }
+    std::cout << "this is valid: " << std::boolalpha << valid << std::endl;
+    return valid;
+
+}
+
 
 bool fivePointAlgoCalibration(Vector3 spherePosition, const std::vector<cv::Point3d>& refDirections, const std::vector<cv::Point3d>& gazeDirections ,
-    double* orientation , double* translation , bool fixTranslation = false ,
+    double* orientationFound , double* translationFound , bool fixTranslation = false ,
     Vector3 translationLowerBound = {15,5,5},Vector3 translationUpperBound = {15,5,5}
     )
 {
@@ -72,44 +96,58 @@ bool fivePointAlgoCalibration(Vector3 spherePosition, const std::vector<cv::Poin
     std::cout << "r2: " << r2 << std::endl;
     std::cout << "t: " << t << std::endl;
 
+    // find the solution which is physically plausible
+    // by testing if the intersection point lie in front of the world camera
+
     Eigen::Matrix<double, 3, 3> rotation1 ,rotation2;
     cv::cv2eigen(r1 , rotation1);
     cv::cv2eigen(r2 , rotation2);
     Eigen::Quaterniond q1 = Eigen::Quaterniond(rotation1);
     Eigen::Quaterniond q2 = Eigen::Quaterniond(rotation2);
+    Eigen::Quaterniond validOrientation;
+
+    Eigen::Matrix<double, 3, 1> translation;
+    Eigen::Matrix<double, 3, 1> validTranslation;
+    cv::cv2eigen(t,translation);
 
 
-    // find the solution which is physically plausible
-    // by testing if the intersection point lie in front of the world camera
-    Eigen::Matrix<double, 3, 1> origin = {0,0,0};
-    Eigen::Matrix<double, 3, 1> translationEigen;
-    cv::cv2eigen(t,translationEigen);
+    double translation_length = 1.0;
+    translation  *= translation_length;
 
     bool valid = false;
-    for(int i=0; i < refDirections.size(); i ++){
 
-        auto refD = singleeyefitter::toEigen(refDirections.at(i));
-        auto gazeD = singleeyefitter::toEigen(gazeDirections.at(i));
-
-        refD.normalize();
-        gazeD.normalize();
-        auto gazeDTransformed = q1 * gazeD;
-
-        Eigen::ParametrizedLine<double, 3> refLine = {origin, refD };
-        Eigen::ParametrizedLine<double, 3> gazeLine = {translationEigen , gazeDTransformed};
-        valid |= rayRayIntersectionInFront(refLine , gazeLine);
+    valid = checkTransformationIsValid( q1 , translation , refDirections , gazeDirections);
+    if(valid){
+        validOrientation = q1;
+        validTranslation = translation;
+        std::cout << "found 1" << std::endl;
     }
+    valid = checkTransformationIsValid( q1 , -translation , refDirections , gazeDirections);
+    if(valid){
+        validOrientation = q1;
+        validTranslation = -translation;
+        std::cout << "found 2" << std::endl;
+    }
+    valid = checkTransformationIsValid( q2 , translation , refDirections , gazeDirections);
+    if(valid){
+        validOrientation = q2;
+        validTranslation = translation;
+        std::cout << "found 3" << std::endl;
+    }
+    valid = checkTransformationIsValid( q2 , -translation , refDirections , gazeDirections);
+    if(valid){
+        validOrientation = q2;
+        validTranslation = -translation;
+        std::cout << "found 4" << std::endl;
+    }
+    orientationFound[0] = validOrientation.w();
+    orientationFound[1] = validOrientation.x();
+    orientationFound[2] = validOrientation.y();
+    orientationFound[3] = validOrientation.z();
 
-    std::cout << "is valid: " <<  std::boolalpha << valid << std::endl;
-
-    orientation[0] = q1.w();
-    orientation[1] = q1.x();
-    orientation[2] = q1.y();
-    orientation[3] = q1.z();
-
-    translation[0] = t.at<double>(0);
-    translation[1] = t.at<double>(1);
-    translation[2] = t.at<double>(2);
+    // translation[0] = t.at<double>(0);
+    // translation[1] = t.at<double>(1);
+    // translation[2] = t.at<double>(2);
 
     //Ceres Matrices are RowMajor, where as Eigen is default ColumnMajor
     // Eigen::Matrix<double, 3, 3, Eigen::RowMajor> rotation;
