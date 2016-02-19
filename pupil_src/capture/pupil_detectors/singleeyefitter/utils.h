@@ -91,6 +91,13 @@ namespace singleeyefitter {
                                            static_cast<Scalar>(point.y));
     }
     template<typename Scalar>
+    inline Eigen::Matrix<Scalar, 3, 1> toEigen(const cv::Point3_<Scalar>& point)
+    {
+        return Eigen::Matrix<Scalar, 3, 1>(static_cast<Scalar>(point.x),
+                                           static_cast<Scalar>(point.y),
+                                           static_cast<Scalar>(point.z));
+    }
+    template<typename Scalar>
     inline cv::Point2f toPoint2f(const Eigen::Matrix<Scalar, 2, 1>& point)
     {
         return cv::Point2f(static_cast<float>(point[0]),
