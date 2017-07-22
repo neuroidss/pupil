@@ -1,11 +1,12 @@
 '''
-(*)~----------------------------------------------------------------------------------
- Pupil - eye tracking platform
- Copyright (C) 2012-2016  Pupil Labs
+(*)~---------------------------------------------------------------------------
+Pupil - eye tracking platform
+Copyright (C) 2012-2017  Pupil Labs
 
- Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
- License details are in the file license.txt, distributed as part of this software.
-----------------------------------------------------------------------------------~(*)
+Distributed under the terms of the GNU
+Lesser General Public License (LGPL v3.0).
+See COPYING and COPYING.LESSER for license details.
+---------------------------------------------------------------------------~(*)
 '''
 
 import os
@@ -15,14 +16,14 @@ from methods import normalize,denormalize
 from file_methods import load_object
 from pyglui.cygl.utils import draw_points_norm,draw_polyline,RGBA
 from OpenGL.GL import GL_POLYGON
-from circle_detector import get_candidate_ellipses
-from finish_calibration import finish_calibration
-import calibrate
+from circle_detector import find_concetric_circles
+from . finish_calibration import finish_calibration
+from . import calibrate
 
 import audio
 
 from pyglui import ui
-from plugin import Calibration_Plugin
+from . calibration_plugin_base import Calibration_Plugin
 
 #logging
 import logging
@@ -32,7 +33,7 @@ class Adjust_Calibration(Calibration_Plugin):
     """
     """
     def __init__(self, g_pool):
-        super(Adjust_Calibration, self).__init__(g_pool)
+        super().__init__(g_pool)
         self.active = False
         self.detected = False
         self.pos = None
@@ -41,11 +42,7 @@ class Adjust_Calibration(Calibration_Plugin):
         self.sample_site = (-2,-2)
         self.counter = 0
         self.counter_max = 30
-        self.candidate_ellipses = []
-        self.show_edges = 0
-        self.aperture = 7
-        self.dist_threshold = 10
-        self.area_threshold = 30
+        self.markers = []
         self.world_size = None
 
         self.stop_marker_found = False
@@ -64,10 +61,7 @@ class Adjust_Calibration(Calibration_Plugin):
         self.menu = ui.Growing_Menu('Controls')
         self.g_pool.calibration_menu.append(self.menu)
 
-        self.menu.append(ui.Slider('aperture',self,min=3,step=2,max=11,label='filter aperture'))
-        self.menu.append(ui.Switch('show_edges',self,label='show edges'))
-
-        self.button = ui.Thumb('active',self,setter=self.toggle,label='Calibrate',hotkey='c')
+        self.button = ui.Thumb('active',self,label='C',setter=self.toggle,hotkey='c')
         self.button.on_color[:] = (.3,.2,1.,.9)
         self.g_pool.quickbar.insert(0,self.button)
 
@@ -127,10 +121,13 @@ class Adjust_Calibration(Calibration_Plugin):
             r['norm_pos'] = [ r['norm_pos'][0]-mean_offset[0],r['norm_pos'][1]-mean_offset[1] ]
 
 
-        finish_calibration(self.g_pool,self.pupil_list,self.ref_list,force='2d')
+        finish_calibration(self.g_pool,self.pupil_list,self.ref_list)
 
 
-    def update(self,frame,events):
+    def recent_events(self, events):
+        frame = events.get('frame')
+        if not frame:
+            return
         """
         gets called once every frame.
         reference positon need to be published to shared_pos
@@ -144,15 +141,11 @@ class Adjust_Calibration(Calibration_Plugin):
             if self.world_size is None:
                 self.world_size = frame.width,frame.height
 
-            self.candidate_ellipses = get_candidate_ellipses(gray_img,
-                                                            area_threshold=self.area_threshold,
-                                                            dist_threshold=self.dist_threshold,
-                                                            min_ring_count=5,
-                                                            visual_debug=self.show_edges)
+            self.markers = find_concetric_circles(gray_img,min_ring_count=3)
 
-            if len(self.candidate_ellipses) > 0:
+            if len(self.markers) > 0:
                 self.detected = True
-                marker_pos = self.candidate_ellipses[0][0]
+                marker_pos = self.markers[0][0][0] #first marker, innermost ellipse, center
                 self.pos = normalize(marker_pos,(frame.width,frame.height),flip_y=True)
 
 
@@ -190,29 +183,29 @@ class Adjust_Calibration(Calibration_Plugin):
                     if self.smooth_vel < 0.01 and sample_ref_dist > 0.1:
                         self.sample_site = self.smooth_pos
                         audio.beep()
-                        logger.debug("Steady marker found. Starting to sample %s datapoints" %self.counter_max)
+                        logger.debug("Steady marker found. Starting to sample {} datapoints".format(self.counter_max))
                         self.counter = self.counter_max
 
                 if self.counter:
                     if self.smooth_vel > 0.01:
                         audio.tink()
-                        logger.warning("Marker moved to quickly: Aborted sample. Sampled %s datapoints. Looking for steady marker again."%(self.counter_max-self.counter))
+                        logger.warning("Marker moved to quickly: Aborted sample. Sampled {} datapoints. Looking for steady marker again.".format((self.counter_max-self.counter)))
                         self.counter = 0
                     else:
                         self.counter -= 1
                         ref = {}
                         ref["norm_pos"] = self.pos
-                        ref["screen_pos"] =  denormalize(self.pos,(frame.width,frame.height),flip_y=True)
+                        ref["screen_pos"] = denormalize(self.pos,(frame.width,frame.height),flip_y=True)
                         ref["timestamp"] = frame.timestamp
                         self.ref_list.append(ref)
                         if self.counter == 0:
                             #last sample before counter done and moving on
                             audio.tink()
-                            logger.debug("Sampled %s datapoints. Stopping to sample. Looking for steady marker again."%self.counter_max)
+                            logger.debug("Sampled {} datapoints. Stopping to sample. Looking for steady marker again.".format(self.counter_max))
 
             #always save pupil positions
             for pt in events.get('gaze_positions',[]):
-                if pt['confidence'] > self.g_pool.pupil_confidence_threshold:
+                if pt['confidence'] > self.pupil_confidence_threshold:
                     #we add an id for the calibration preprocess data to work as is usually expects pupil data.
                     pt['id'] = 0
                     self.gaze_list.append(pt)
@@ -225,17 +218,12 @@ class Adjust_Calibration(Calibration_Plugin):
             else:
                 self.button.status_text = 'Looking for Marker'
 
-
-
-            #stop if autostop condition is satisfied:
-            if self.auto_stop >=self.auto_stop_max:
+            # stop if autostop condition is satisfied:
+            if self.auto_stop >= self.auto_stop_max:
                 self.auto_stop = 0
                 self.stop()
-
-
         else:
             pass
-
 
     def get_init_dict(self):
         return {}
@@ -253,20 +241,12 @@ class Adjust_Calibration(Calibration_Plugin):
             draw_points_norm([self.smooth_pos],size=15,color=RGBA(1.,1.,0.,.5))
 
         if self.active and self.detected:
-            for e in self.candidate_ellipses:
+            for marker in self.markers:
+                e = marker[-1]
                 pts = cv2.ellipse2Poly( (int(e[0][0]),int(e[0][1])),
                                     (int(e[1][0]/2),int(e[1][1]/2)),
                                     int(e[-1]),0,360,15)
                 draw_polyline(pts,color=RGBA(0.,1.,0,1.))
-
-
-            # lets draw an indicator on the autostop count
-            e = self.candidate_ellipses[3]
-            pts = cv2.ellipse2Poly( (int(e[0][0]),int(e[0][1])),
-                                (int(e[1][0]/2),int(e[1][1]/2)),
-                                int(e[-1]),0,360,360/self.auto_stop_max)
-            indicator = [e[0]] + pts[self.auto_stop:].tolist() + [e[0]]
-            draw_polyline(indicator,color=RGBA(8.,0.1,0.1,.8),line_type=GL_POLYGON)
         else:
             pass
 

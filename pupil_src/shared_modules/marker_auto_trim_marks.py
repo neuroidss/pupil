@@ -1,19 +1,20 @@
 '''
-(*)~----------------------------------------------------------------------------------
- Pupil - eye tracking platform
- Copyright (C) 2012-2016  Pupil Labs
+(*)~---------------------------------------------------------------------------
+Pupil - eye tracking platform
+Copyright (C) 2012-2017  Pupil Labs
 
- Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
- License details are in the file license.txt, distributed as part of this software.
-----------------------------------------------------------------------------------~(*)
+Distributed under the terms of the GNU
+Lesser General Public License (LGPL v3.0).
+See COPYING and COPYING.LESSER for license details.
+---------------------------------------------------------------------------~(*)
 '''
 
 import logging
 logger = logging.getLogger(__name__)
 
 from plugin import Plugin
-from offline_marker_detector import Offline_Marker_Detector
-from export_launcher import Export_Launcher
+from offline_surface_tracker import Offline_Surface_Tracker
+from video_export_launcher import Video_Export_Launcher
 from ctypes import c_int
 
 from pyglui import ui
@@ -41,7 +42,7 @@ class Marker_Auto_Trim_Marks(Plugin):
     """
 
     def __init__(self, g_pool,man_in_marks=[],man_out_marks=[]):
-        super(Marker_Auto_Trim_Marks, self).__init__(g_pool)
+        super().__init__(g_pool)
         self.menu = None
 
         self.in_marker_id = 18
@@ -105,24 +106,24 @@ class Marker_Auto_Trim_Marks(Plugin):
         self.surface_export_queue = self.sections[:]
 
     def video_export(self,section):
-        plugins = [p for p in self.g_pool.plugins if isinstance(p,Export_Launcher)]
+        plugins = [p for p in self.g_pool.plugins if isinstance(p,Video_Export_Launcher)]
         if plugins:
             launcher = plugins[0]
-            logger.info("exporting %s" %str(section))
+            logger.info("exporting {!s}".format(section))
             self.g_pool.trim_marks.set(section)
-            launcher.rec_name.value = "world_viz_section_%s-%s"%section
+            launcher.rec_name.value = "world_viz_section_{}-{}".format(*section)
             launcher.add_export()
 
     def surface_export(self,section):
-        plugins = [p for p in self.g_pool.plugins if isinstance(p,Offline_Marker_Detector)]
+        plugins = [p for p in self.g_pool.plugins if isinstance(p,Offline_Surface_Tracker)]
         if plugins:
             tracker = plugins[0]
-            logger.info("exporting %s" %str(section))
+            logger.info("exporting {!s}".format(section))
             self.g_pool.trim_marks.set(section)
             tracker.recalculate()
             tracker.save_surface_statsics_to_file()
         else:
-            logger.warning("Please start Offline_Marker_Detector Plugin for surface export.")
+            logger.warning("Please start Offline_Surface_Tracker Plugin for surface export.")
 
     def activate_section(self,section):
         self.g_pool.trim_marks.set(section)
@@ -136,10 +137,13 @@ class Marker_Auto_Trim_Marks(Plugin):
         if status:
             self.menu[0].text = "Marker Auto uses the marker detector to get markers"
         else:
-            self.menu[0].text  = "Marker Auto Trim Marks: Turn on Offline_Marker_Detector!"
+            self.menu[0].text  = "Marker Auto Trim Marks: Turn on Offline_Surface_Tracker!"
 
 
-    def update(self,frame,events):
+    def recent_events(self, events):
+        frame = events.get('frame')
+        if not frame:
+            return
         self.current_frame_idx = frame.index
         if self.video_export_queue:
             self.video_export(self.video_export_queue.pop(0))
@@ -147,7 +151,7 @@ class Marker_Auto_Trim_Marks(Plugin):
             self.surface_export(self.surface_export_queue.pop(0))
 
         if self.sections == None:
-            plugins = [p for p in self.g_pool.plugins if isinstance(p,Offline_Marker_Detector)]
+            plugins = [p for p in self.g_pool.plugins if isinstance(p,Offline_Surface_Tracker)]
             if plugins:
                 marker_tracker_plugin = plugins[0]
             else:
@@ -158,7 +162,7 @@ class Marker_Auto_Trim_Marks(Plugin):
                 #make a marker signal 0 = none, 1 = in, -1=out
                 in_id = self.in_marker_id
                 out_id = self.out_marker_id
-                logger.debug("Looking for trim mark markers: %s,%s"%(in_id,out_id))
+                logger.debug("Looking for trim mark markers: {},{}".format(in_id, out_id))
                 in_out_signal = [0]*len(marker_tracker_plugin.cache)
                 for idx,frame in enumerate(marker_tracker_plugin.cache):
                     # marker = {'id':msg,'verts':r,'verts_norm':r_norm,'centroid':centroid,"frames_since_true_detection":0}
@@ -207,7 +211,7 @@ class Marker_Auto_Trim_Marks(Plugin):
                         section_out_index = fist_out_marker_of_this_clutser[1]
                         self.sections.append((section_in_index,section_out_index))
 
-                self.sections = [(s,e) for s,e in self.sections if e-s>10]#we filter out tiny sections
+                self.sections = [(s, e) for s, e in self.sections if e-s>10]#we filter out tiny sections
                 # because they can happen with out markers at video start and in marker at video end.
 
                 # Lines for areas that have been cached

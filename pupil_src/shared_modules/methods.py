@@ -1,13 +1,16 @@
 '''
-(*)~----------------------------------------------------------------------------------
- Pupil - eye tracking platform
- Copyright (C) 2012-2016  Pupil Labs
+(*)~---------------------------------------------------------------------------
+Pupil - eye tracking platform
+Copyright (C) 2012-2017  Pupil Labs
 
- Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
- License details are in the file license.txt, distributed as part of this software.
-----------------------------------------------------------------------------------~(*)
+Distributed under the terms of the GNU
+Lesser General Public License (LGPL v3.0).
+See COPYING and COPYING.LESSER for license details.
+---------------------------------------------------------------------------~(*)
 '''
 
+import os, sys, platform, getpass
+from time import time
 import numpy as np
 try:
     import numexpr as ne
@@ -17,7 +20,7 @@ import cv2
 import logging
 logger = logging.getLogger(__name__)
 
-from time import time
+
 def timer(dt):
     '''
     a generator used to time window refreshs
@@ -30,6 +33,7 @@ def timer(dt):
             yield True
         else:
             yield False
+
 
 def delta_t():
     ''' return time between each call like so:
@@ -44,7 +48,7 @@ def delta_t():
     ts = time()
     while True:
         t = time()
-        dt,ts = t-ts,t
+        dt, ts = t-ts, t
         yield dt
 
 
@@ -75,16 +79,18 @@ class Roi(object):
     def view(self, value):
         raise Exception('The view field is read-only. Use the set methods instead')
 
-    def add_vector(self,(x,y)):
+    def add_vector(self,vector):
         """
         adds the roi offset to a len2 vector
         """
+        x,y = vector
         return (self.lX+x,self.lY+y)
 
-    def sub_vector(self,(x,y)):
+    def sub_vector(self,vector):
         """
         subs the roi offset to a len2 vector
         """
+        x,y = vector
         return (x-self.lX,y-self.lY)
 
     def set(self,vals):
@@ -100,33 +106,21 @@ class Roi(object):
 
 def undistort_unproject_pts(pts_uv, camera_matrix, dist_coefs):
     """
-    This function converts a set of 2D image coordinates to the spherical coordinate system.
+    This function converts a set of 2D image coordinates to vectors in pinhole camera space.
     Hereby the intrinsics of the camera are taken into account.
-    The 2d point set gets undistorted, converted to cartesian vertices and then converted to spherical coordinates.
-
+    UV is converted to normalized image space (think frustum with image plane at z=1) then undistored
+    adding a z_coordinate of 1 yield vectors pointing from 0,0,0 to the undistored image pixel.
     @return: ndarray with shape=(n, 3)
 
     """
     pts_uv = np.array(pts_uv)
-    camera_matrix_inv = np.linalg.inv(camera_matrix)
     num_pts = pts_uv.size / 2
 
-    pts_uv.shape = (num_pts, 1, 2)
-    pts_uv = cv2.undistortPoints(pts_uv, camera_matrix, dist_coefs, P=camera_matrix)
-    # return pts_uv
-    # P = camera_matrix enables denormalization as follows:
-    # ```
-    # pts_uv *= np.array([camera_matrix[0,0], camera_matrix[1,1]]) # [fx, fy]
-    # pts_uv += np.array([camera_matrix[0,2], camera_matrix[1,2]]) # [cx, cy]
-    # ```
-
-    pts_h = cv2.convertPointsToHomogeneous(np.float32(pts_uv))
-    pts_h.shape = (num_pts,3)
-
-    xyz = np.zeros((num_pts, 3), dtype=np.float32)
-    for i in range(num_pts):
-        xyz[i]   = camera_matrix_inv.dot(pts_h[i])
-    return xyz
+    pts_uv.shape = (int(num_pts), 1, 2)
+    pts_uv = cv2.undistortPoints(pts_uv, camera_matrix, dist_coefs)
+    pts_3d = cv2.convertPointsToHomogeneous(np.float32(pts_uv))
+    pts_3d.shape = (int(num_pts),3)
+    return pts_3d
 
 
 def project_distort_pts(pts_xyz,camera_matrix, dist_coefs,  rvec = np.array([0,0,0], dtype=np.float32), tvec = np.array([0,0,0], dtype=np.float32) ):
@@ -135,9 +129,10 @@ def project_distort_pts(pts_xyz,camera_matrix, dist_coefs,  rvec = np.array([0,0
     pts2d, _ = cv2.projectPoints(pts_xyz, rvec , tvec, camera_matrix, dist_coefs)
     return pts2d.reshape(-1,2)
 
-def cart_to_spherical( (x,y, z) ):
+def cart_to_spherical(vector):
     # convert to spherical coordinates
     # source: http://stackoverflow.com/questions/4116658/faster-numpy-cartesian-to-spherical-coordinate-conversion
+    x,y,z = vector
     r = np.sqrt(x**2 + y**2 + z**2)
     theta = np.arccos( y /  r ) # for elevation angle defined from Z-axis down
     psi = np.arctan2(z, x)
@@ -212,7 +207,7 @@ def erase_specular(image,lower_threshold=0.0, upper_threshold=150.0):
 
 
 def find_hough_circles(img):
-    circles = cv2.HoughCircles(pupil_img,cv2.cv.CV_HOUGH_GRADIENT,1,20,
+    circles = cv2.HoughCircles(pupil_img,cv2.HOUGH_GRADIENT,1,20,
                             param1=50,param2=30,minRadius=0,maxRadius=80)
     if circles is not None:
         circles = np.uint16(np.around(circles))
@@ -241,7 +236,7 @@ def curvature(c):
         return
     c = c[:,0]
     curvature = []
-    for i in xrange(len(c)-2):
+    for i in range(len(c)-2):
         #find the angle at i+1
         frm = Vector(c[i])
         at = Vector(c[i+1])
@@ -389,7 +384,6 @@ def find_slope_disc(curvature,angle = 15):
         dif = abs(base_slope-new_slope)
         if dif>=angle:
             split_idx.add(i)
-        print i,dif
         i +=1
 
     return split_list
@@ -499,17 +493,18 @@ def calibrate_camera(img_pts, obj_pts, img_size):
 
 def gen_pattern_grid(size=(4,11)):
     pattern_grid = []
-    for i in xrange(size[1]):
-        for j in xrange(size[0]):
+    for i in range(size[1]):
+        for j in range(size[0]):
             pattern_grid.append([(2*j)+i%2,i,0])
     return np.asarray(pattern_grid, dtype='f4')
 
 
 
-def normalize(pos, (width, height),flip_y=False):
+def normalize(pos, size, flip_y=False):
     """
     normalize return as float
     """
+    width,height = size
     x = pos[0]
     y = pos[1]
     x /=float(width)
@@ -518,10 +513,11 @@ def normalize(pos, (width, height),flip_y=False):
         return x,1-y
     return x,y
 
-def denormalize(pos, (width, height), flip_y=False):
+def denormalize(pos, size, flip_y=False):
     """
     denormalize
     """
+    width,height = size
     x = pos[0]
     y = pos[1]
     x *= width
@@ -532,10 +528,13 @@ def denormalize(pos, (width, height), flip_y=False):
 
 
 
-def dist_pts_ellipse(((ex,ey),(dx,dy),angle),points):
+def dist_pts_ellipse(ellipse, points):
     """
     return unsigned euclidian distances of points to ellipse
     """
+    pos, size, angle = ellipse
+    ex,ey = pos
+    dx,dy = size
     pts = np.float64(points)
     rx,ry = dx/2., dy/2.
     angle = (angle/180.)*np.pi
@@ -565,11 +564,14 @@ def dist_pts_ellipse(((ex,ey),(dx,dy),angle),points):
 
 
 if ne:
-    def dist_pts_ellipse(((ex,ey),(dx,dy),angle),points):
+    def dist_pts_ellipse(ellipse, points):
         """
         return unsigned euclidian distances of points to ellipse
         same as above but uses numexpr for 2x speedup
         """
+        pos, size, angle = ellipse
+        ex,ey = pos
+        dx,dy = size
         pts = np.float64(points)
         pts.shape=(-1,2)
         rx,ry = dx/2., dy/2.
@@ -688,6 +690,22 @@ def filter_subsets(l):
 
 
 
+def get_system_info():
+    try:
+        if platform.system() == "Windows":
+            username = os.environ["USERNAME"]
+            sysname, nodename, release, version, machine, _ = platform.uname()
+        else:
+            username = getpass.getuser()
+            sysname, nodename, release, version, machine = os.uname()
+    except Exception as e:
+        logger.error(e)
+        username = 'unknown'
+        sysname, nodename, release, version, machine = sys.platform,'unknown','unknown','unknown','unknown'
+
+    return "User: {}, Platform: {}, Machine: {}, Release: {}, Version: {}".format(username,sysname,nodename,release,version)
+
+
 if __name__ == '__main__':
     # tst = []
     # for x in range(10):
@@ -704,7 +722,6 @@ if __name__ == '__main__':
     #  *-*
     pl = np.array([[[0, 0]],[[0, 1]],[[1, 1]],[[2, 1]],[[2, 2]],[[1, 3]],[[1, 4]],[[2,4]]], dtype=np.int32)
     curvature = GetAnglesPolyline(pl,closed=0)
-    print curvature
     curvature = GetAnglesPolyline(pl,closed=1)
     # print curvature
     # print find_curv_disc(curvature)

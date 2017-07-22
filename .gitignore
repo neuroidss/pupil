@@ -6,8 +6,12 @@ Thumbs.db
 *.pyc
 *.pstats
 
+# object files #
+*.o
+
 # binaries #
 *.so
+*.o
 
 #cython build files
 *.c
@@ -16,6 +20,7 @@ Thumbs.db
 # user generated settings files will also be ignored #
 recordings/
 capture_settings/
+service_settings/
 player_settings/
 settings/
 *.db
@@ -38,3 +43,4 @@ CircleGoodnessTest.cpp
 SphereCircleTest.cpp
 *.mp4
 *.mkv
+*.egg-info
